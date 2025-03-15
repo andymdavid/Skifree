@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<!--[if lt IE 7]>      <html class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if IE 7]>         <html class="no-js lt-ie9 lt-ie8"> <![endif]-->
+<!--[if IE 8]>         <html class="no-js lt-ie9"> <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js"> <!--<![endif]-->
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+        <title>Skifree.js</title>
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=0">
+        <meta name="description" content="">
+        <meta name="HandheldFriendly" content="True">
+        <meta http-equiv="cleartype" content="on">
+
+        <meta name="description" content="A JavaScript port of Chris Pirih's classic SkiFree game, by Dan Hough">
+
+        <link rel="apple-touch-icon-precomposed" sizes="144x144" href="apple-touch-icon-144x144-precomposed.png">
+        <link rel="apple-touch-icon-precomposed" sizes="114x114" href="apple-touch-icon-114x114-precomposed.png">
+        <link rel="apple-touch-icon-precomposed" sizes="72x72" href="apple-touch-icon-72x72-precomposed.png">
+        <link rel="apple-touch-icon-precomposed" href="apple-touch-icon-57x57-precomposed.png">
+        <link rel="shortcut icon" href="apple-touch-icon.png">
+
+        <!-- Tile icon for Win8 (144x144 + tile color) -->
+        <meta name="msapplication-TileImage" content="apple-touch-icon-144x144-precomposed.png">
+        <meta name="msapplication-TileColor" content="#222222">
+
+        <!-- Place favicon.ico and apple-touch-icon.png in the root directory -->
+
+        <link rel="stylesheet" href="css/normalize.css">
+        <link rel="stylesheet" href="css/main.css">
+        <link rel="stylesheet" href="css/skifree.css">
+        <script src="js/vendor/modernizr-2.6.2.min.js"></script>
+        <style>
+            /* Start Screen Styles */
+            .start-screen {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: transparent;
+                display: flex;
+                flex-direction: column;
+                justify-content: flex-end;
+                align-items: center;
+                z-index: 1000;
+                pointer-events: none; /* Allow clicks to pass through to the game except for the button */
+                padding-bottom: 40px; /* Space from bottom of screen */
+            }
+
+            .start-button-container {
+                pointer-events: auto; /* Make the button clickable */
+                margin-bottom: 20px;
+                text-align: center;
+            }
+
+            .start-button {
+                background-color: rgba(0, 102, 204, 0.8);
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                font-size: 18px;
+                cursor: pointer;
+                border-radius: 5px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                transition: background-color 0.3s, transform 0.1s;
+                font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+                font-weight: bold;
+                letter-spacing: 1px;
+                margin-bottom: 5px;
+            }
+
+            .start-button:hover {
+                background-color: rgba(0, 85, 170, 0.9);
+                transform: translateY(-2px);
+                box-shadow: 0 6px 10px rgba(0, 0, 0, 0.25);
+            }
+
+            .start-button:active {
+                transform: scale(0.98) translateY(0);
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            }
+
+            .key-hint {
+                color: rgba(255, 255, 255, 0.9);
+                font-size: 14px;
+                margin-top: 5px;
+                text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+                font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            }
+            
+            /* Aggressive hiding of info box and any related elements */
+            .info-box, 
+            div[class*="info"], 
+            div[id*="info"],
+            .skifree-infobox,
+            .infobox,
+            .info {
+                display: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                width: 0 !important;
+                height: 0 !important;
+                position: absolute !important;
+                top: -9999px !important;
+                left: -9999px !important;
+                z-index: -9999 !important;
+                pointer-events: none !important;
+            }
+        </style>
+        
+        <!-- Override canvas fillText to prevent text rendering -->
+        <script>
+            // Set a global flag to indicate the game hasn't started yet
+            window.gameStarted = false;
+            
+            // Override the canvas fillText method to prevent any text from being drawn
+            window.addEventListener('DOMContentLoaded', function() {
+                var canvas = document.getElementById('skifree-canvas');
+                if (canvas) {
+                    // Disable pointer events on canvas to prevent interaction until game starts
+                    canvas.style.pointerEvents = 'none';
+                    
+                    // Get the canvas context and override its fillText method
+                    var ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        // Store the original fillText method
+                        var originalFillText = ctx.fillText;
+                        
+                        // Override fillText to do nothing
+                        ctx.fillText = function(text, x, y, maxWidth) {
+                            // Don't draw any text
+                            return;
+                        };
+                    }
+                }
+            });
+            
+            // Increase spawn rates for snowboarders, dogs, and ski lifts
+            window.addEventListener('DOMContentLoaded', function() {
+                // Wait for the game to be loaded
+                var checkGameInterval = setInterval(function() {
+                    if (window.randomlySpawnNPC && window.spawnBoarder) {
+                        clearInterval(checkGameInterval);
+                        
+                        // Store the original randomlySpawnNPC function
+                        var originalRandomlySpawnNPC = window.randomlySpawnNPC;
+                        
+                        // Override the randomlySpawnNPC function to increase spawn rates
+                        window.randomlySpawnNPC = function(spawnFunction, dropRate) {
+                            // Increase spawn rates for specific NPCs
+                            if (spawnFunction === window.spawnBoarder) {
+                                // Increase snowboarder spawn rate by 5x
+                                dropRate = dropRate * 5;
+                            }
+                            
+                            // Call the original function with the modified drop rate
+                            return originalRandomlySpawnNPC(spawnFunction, dropRate);
+                        };
+                        
+                        // Create a function to spawn ski lifts
+                        window.spawnSkiLift = function() {
+                            if (!window.Sprite || !window.sprites || !window.sprites.emptyChairLift) return;
+                            
+                            var newSkiLift = new window.Sprite(window.sprites.emptyChairLift);
+                            var randomPositionAbove = window.dContext.getRandomMapPositionAboveViewport();
+                            var randomPositionBelow = window.dContext.getRandomMapPositionBelowViewport();
+                            
+                            // Position the ski lift
+                            newSkiLift.setMapPosition(randomPositionAbove[0], randomPositionAbove[1]);
+                            newSkiLift.setSpeed(2); // Slow speed for ski lifts
+                            newSkiLift.setMapPositionTarget(randomPositionBelow[0], randomPositionBelow[1]);
+                            
+                            // Add to the game
+                            window.game.addMovingObject(newSkiLift);
+                        };
+                        
+                        // Add ski lift spawning to the game cycle
+                        var originalBeforeCycle = window.game.beforeCycle;
+                        window.game.beforeCycle = function() {
+                            var result = originalBeforeCycle.apply(this, arguments);
+                            
+                            // Only spawn if the game has started
+                            if (window.gameStarted && !window.game.isPaused()) {
+                                // Spawn ski lifts occasionally (0.5% chance per cycle)
+                                if (Math.random() < 0.005) {
+                                    window.spawnSkiLift();
+                                }
+                            }
+                            
+                            return result;
+                        };
+                        
+                        // Populate the start screen with objects
+                        populateStartScreen();
+                    }
+                }, 100);
+            });
+            
+            // Function to populate the start screen with objects
+            function populateStartScreen() {
+                console.log("Populating start screen");
+                
+                if (!window.Sprite || !window.sprites || !window.game) {
+                    console.log("Game objects not available yet");
+                    setTimeout(populateStartScreen, 100);
+                    return;
+                }
+                
+                // Make sure we have the Snowboarder constructor
+                var Snowboarder = window.Snowboarder;
+                if (!Snowboarder) {
+                    // Try to get it from the global scope
+                    if (typeof Snowboarder === 'undefined') {
+                        console.log("Snowboarder constructor not found, using Sprite instead");
+                        Snowboarder = window.Sprite;
+                    }
+                }
+                
+                // Add trees
+                for (var i = 0; i < 10; i++) {
+                    var x = Math.random() * 300 - 150; // -150 to 150
+                    var y = Math.random() * 200 - 100; // -100 to 100
+                    var treeType = Math.random() < 0.5 ? 'smallTree' : 'tallTree';
+                    
+                    var tree = new window.Sprite(window.sprites[treeType]);
+                    tree.setMapPosition(x, y);
+                    window.game.addStaticObject(tree);
+                    console.log("Added tree at", x, y);
+                }
+                
+                // Add snowboarders
+                if (Snowboarder) {
+                    for (var i = 0; i < 3; i++) {
+                        var x = Math.random() * 200 - 100; // -100 to 100
+                        var y = Math.random() * 150 - 75; // -75 to 75
+                        
+                        var boarder = new Snowboarder(window.sprites.snowboarder);
+                        boarder.setMapPosition(x, y);
+                        boarder.setSpeed(0); // Static at first
+                        window.game.addMovingObject(boarder);
+                        console.log("Added snowboarder at", x, y);
+                    }
+                }
+                
+                // Add ski lifts
+                for (var i = 0; i < 2; i++) {
+                    var x = (i === 0 ? -1 : 1) * (Math.random() * 50 + 100); // Around -150 or 150
+                    var y = Math.random() * 100 - 50; // -50 to 50
+                    
+                    var lift = new window.Sprite(window.sprites.emptyChairLift);
+                    lift.setMapPosition(x, y);
+                    window.game.addStaticObject(lift);
+                    console.log("Added ski lift at", x, y);
+                }
+                
+                // Add jumps
+                for (var i = 0; i < 2; i++) {
+                    var x = Math.random() * 200 - 100; // -100 to 100
+                    var y = Math.random() * 150 - 75; // -75 to 75
+                    
+                    var jump = new window.Sprite(window.sprites.jump);
+                    jump.setMapPosition(x, y);
+                    window.game.addStaticObject(jump);
+                    console.log("Added jump at", x, y);
+                }
+                
+                // Add rocks
+                for (var i = 0; i < 3; i++) {
+                    var x = Math.random() * 200 - 100; // -100 to 100
+                    var y = Math.random() * 150 - 75; // -75 to 75
+                    
+                    var rock = new window.Sprite(window.sprites.rock);
+                    rock.setMapPosition(x, y);
+                    window.game.addStaticObject(rock);
+                    console.log("Added rock at", x, y);
+                }
+            }
+        </script>
+    </head>
+    <body>
+        <!--[if lt IE 7]>
+            <p class="chromeframe">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> or <a href="http://www.google.com/chromeframe/?redirect=true">activate Google Chrome Frame</a> to improve your experience.</p>
+        <![endif]-->
+
+        <!-- Add your site or application content here -->
+        <canvas id="skifree-canvas" tabindex="0"></canvas>
+        
+        <!-- Start Screen Overlay -->
+        <div id="start-screen" class="start-screen">
+            <div class="start-button-container">
+                <button id="start-button" class="start-button">Start Game</button>
+                <div class="key-hint">or press any key to start</div>
+            </div>
+        </div>
+
+        <script src="js/vendor/jquery-1.8.3.min.js"></script>
+        <script src="js/vendor/sugar-1.3.7.min.js"></script>
+        
+        <!-- Load the game script but keep it paused until start -->
+        <script src="dist/skifree.js"></script>
+        
+        <!-- Direct script to modify the game -->
+        <script>
+            // Store the original window.onload function
+            var originalOnload = window.onload;
+            
+            // Override window.onload to add our own initialization
+            window.onload = function() {
+                console.log("Window loaded, running original onload");
+                
+                // Call the original onload function if it exists
+                if (typeof originalOnload === 'function') {
+                    originalOnload();
+                }
+                
+                console.log("Original onload complete, adding objects to start screen");
+                
+                // Function to add objects to the start screen
+                function addObjectsToStartScreen() {
+                    console.log("Attempting to add objects to start screen");
+                    
+                    if (!window.game || !window.Sprite || !window.sprites) {
+                        console.log("Game not fully loaded yet, retrying in 100ms");
+                        setTimeout(addObjectsToStartScreen, 100);
+                        return;
+                    }
+                    
+                    console.log("Game loaded, adding objects to start screen");
+                    
+                    // Add trees directly to the game
+                    function addTree(x, y, type) {
+                        var tree = new window.Sprite(window.sprites[type]);
+                        tree.setMapPosition(x, y);
+                        window.game.addStaticObject(tree);
+                        console.log("Added tree at", x, y);
+                    }
+                    
+                    // Add trees very close to the player
+                    addTree(-30, 30, 'smallTree');
+                    addTree(30, 30, 'tallTree');
+                    addTree(-40, -20, 'tallTree');
+                    addTree(40, -20, 'smallTree');
+                    
+                    // Add trees in a grid pattern
+                    for (var x = -100; x <= 100; x += 40) {
+                        for (var y = -100; y <= 100; y += 40) {
+                            if ((Math.abs(x) > 20 || Math.abs(y) > 20) && // Not too close to player
+                                Math.random() < 0.5) { // Only place some trees for a more natural look
+                                var treeType = Math.random() < 0.5 ? 'smallTree' : 'tallTree';
+                                addTree(x, y, treeType);
+                            }
+                        }
+                    }
+                    
+                    // Add snowboarders
+                    if (window.Snowboarder) {
+                        var boarder1 = new window.Snowboarder(window.sprites.snowboarder);
+                        boarder1.setMapPosition(-50, -50);
+                        boarder1.setSpeed(0);
+                        window.game.addMovingObject(boarder1);
+                        console.log("Added snowboarder at -50, -50");
+                        
+                        var boarder2 = new window.Snowboarder(window.sprites.snowboarder);
+                        boarder2.setMapPosition(50, -50);
+                        boarder2.setSpeed(0);
+                        window.game.addMovingObject(boarder2);
+                        console.log("Added snowboarder at 50, -50");
+                    } else {
+                        console.log("Snowboarder constructor not available");
+                    }
+                    
+                    // Add ski lifts
+                    for (var i = 0; i < 2; i++) {
+                        var x = (i === 0 ? -1 : 1) * (Math.random() * 50 + 100); // Around -150 or 150
+                        var y = Math.random() * 100 - 50; // -50 to 50
+                        
+                        var lift = new window.Sprite(window.sprites.emptyChairLift);
+                        lift.setMapPosition(x, y);
+                        window.game.addStaticObject(lift);
+                        console.log("Added ski lift at", x, y);
+                    }
+                    
+                    // Add jumps
+                    for (var i = 0; i < 2; i++) {
+                        var x = Math.random() * 200 - 100; // -100 to 100
+                        var y = Math.random() * 150 - 75; // -75 to 75
+                        
+                        var jump = new window.Sprite(window.sprites.jump);
+                        jump.setMapPosition(x, y);
+                        window.game.addStaticObject(jump);
+                        console.log("Added jump at", x, y);
+                    }
+                    
+                    // Add rocks
+                    for (var i = 0; i < 3; i++) {
+                        var x = Math.random() * 200 - 100; // -100 to 100
+                        var y = Math.random() * 150 - 75; // -75 to 75
+                        
+                        var rock = new window.Sprite(window.sprites.rock);
+                        rock.setMapPosition(x, y);
+                        window.game.addStaticObject(rock);
+                        console.log("Added rock at", x, y);
+                    }
+                }
+                
+                // Try multiple times to ensure we catch the game after it's loaded
+                setTimeout(addObjectsToStartScreen, 500);
+                setTimeout(addObjectsToStartScreen, 1000);
+                setTimeout(addObjectsToStartScreen, 2000);
+            };
+        </script>
+        
+        <!-- Custom start screen script -->
+        <script>
+            // Wait for DOM to be ready
+            document.addEventListener('DOMContentLoaded', function() {
+                // Get references to elements
+                var startScreen = document.getElementById('start-screen');
+                var startButton = document.getElementById('start-button');
+                var canvas = document.getElementById('skifree-canvas');
+                
+                // Function to start the game
+                function startGame() {
+                    // Set global flag to indicate game has started
+                    window.gameStarted = true;
+                    
+                    // Remove the start screen
+                    if (startScreen && startScreen.parentNode) {
+                        startScreen.parentNode.removeChild(startScreen);
+                    }
+                    
+                    // Enable canvas interaction
+                    canvas.style.pointerEvents = 'auto';
+                    
+                    // Trigger a click on the canvas to start the game
+                    var clickEvent = new MouseEvent('click', {
+                        view: window,
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: canvas.width / 2,
+                        clientY: canvas.height / 2
+                    });
+                    canvas.dispatchEvent(clickEvent);
+                }
+                
+                // Start game when button is clicked
+                startButton.addEventListener('click', startGame);
+                
+                // Start game when any key is pressed
+                document.addEventListener('keydown', function startGameKeyHandler(e) {
+                    startGame();
+                    document.removeEventListener('keydown', startGameKeyHandler);
+                });
+                
+                // Make sure the canvas context's fillText method is overridden
+                // This is the most direct way to prevent any text from being drawn
+                var ensureNoText = function() {
+                    var canvas = document.getElementById('skifree-canvas');
+                    if (canvas) {
+                        var ctx = canvas.getContext('2d');
+                        if (ctx && ctx.fillText) {
+                            // Replace fillText with a no-op function
+                            ctx.fillText = function() { return; };
+                        }
+                    }
+                };
+                
+                // Run immediately and periodically to ensure text never appears
+                ensureNoText();
+                setInterval(ensureNoText, 10);
+            });
+        </script>
+
+        <!-- Direct access to game object -->
+        <script>
+            // Function to check if the game is available and add objects
+            function checkGameAndAddObjects() {
+                console.log("Checking for game object...");
+                
+                // Check if the game object is available in the global scope
+                if (window.game && window.Sprite && window.sprites) {
+                    console.log("Game object found, adding objects to start screen");
+                    
+                    try {
+                        // Add trees directly to the game
+                        function addTree(x, y, type) {
+                            try {
+                                var tree = new window.Sprite(window.sprites[type]);
+                                tree.setMapPosition(x, y);
+                                window.game.addStaticObject(tree);
+                                console.log("Added tree at", x, y);
+                            } catch (e) {
+                                console.error("Error adding tree:", e);
+                            }
+                        }
+                        
+                        // Add trees very close to the player (at 0,0)
+                        addTree(0, 30, 'smallTree');
+                        addTree(30, 30, 'tallTree');
+                        addTree(-30, 30, 'smallTree');
+                        addTree(0, -30, 'tallTree');
+                        
+                        // Add more trees in a pattern around the player
+                        for (var i = 0; i < 20; i++) {
+                            var angle = (i / 20) * Math.PI * 2;
+                            var distance = 60 + Math.random() * 40;
+                            var x = Math.cos(angle) * distance;
+                            var y = Math.sin(angle) * distance;
+                            var treeType = Math.random() < 0.5 ? 'smallTree' : 'tallTree';
+                            addTree(x, y, treeType);
+                        }
+                        
+                        // Add snowboarders if available
+                        if (window.Snowboarder) {
+                            try {
+                                var boarder1 = new window.Snowboarder(window.sprites.snowboarder);
+                                boarder1.setMapPosition(-50, 0);
+                                boarder1.setSpeed(0);
+                                window.game.addMovingObject(boarder1);
+                                console.log("Added snowboarder at -50, 0");
+                                
+                                var boarder2 = new window.Snowboarder(window.sprites.snowboarder);
+                                boarder2.setMapPosition(50, 0);
+                                boarder2.setSpeed(0);
+                                window.game.addMovingObject(boarder2);
+                                console.log("Added snowboarder at 50, 0");
+                            } catch (e) {
+                                console.error("Error adding snowboarders:", e);
+                            }
+                        } else {
+                            console.log("Snowboarder constructor not available");
+                        }
+                        
+                        // Add jumps if available
+                        if (window.sprites.jump) {
+                            try {
+                                var jump1 = new window.Sprite(window.sprites.jump);
+                                jump1.setMapPosition(-30, -50);
+                                window.game.addStaticObject(jump1);
+                                console.log("Added jump at -30, -50");
+                                
+                                var jump2 = new window.Sprite(window.sprites.jump);
+                                jump2.setMapPosition(30, -50);
+                                window.game.addStaticObject(jump2);
+                                console.log("Added jump at 30, -50");
+                            } catch (e) {
+                                console.error("Error adding jumps:", e);
+                            }
+                        }
+                        
+                        // Add rocks if available
+                        if (window.sprites.rock) {
+                            try {
+                                var rock1 = new window.Sprite(window.sprites.rock);
+                                rock1.setMapPosition(-60, -30);
+                                window.game.addStaticObject(rock1);
+                                console.log("Added rock at -60, -30");
+                                
+                                var rock2 = new window.Sprite(window.sprites.rock);
+                                rock2.setMapPosition(60, -30);
+                                window.game.addStaticObject(rock2);
+                                console.log("Added rock at 60, -30");
+                            } catch (e) {
+                                console.error("Error adding rocks:", e);
+                            }
+                        }
+                        
+                        // Increase spawn rates for snowboarders
+                        if (window.randomlySpawnNPC && window.spawnBoarder) {
+                            try {
+                                var originalRandomlySpawnNPC = window.randomlySpawnNPC;
+                                window.randomlySpawnNPC = function(spawnFunction, dropRate) {
+                                    if (spawnFunction === window.spawnBoarder) {
+                                        dropRate = dropRate * 5; // 5x more snowboarders
+                                    }
+                                    return originalRandomlySpawnNPC(spawnFunction, dropRate);
+                                };
+                                console.log("Increased snowboarder spawn rate");
+                            } catch (e) {
+                                console.error("Error modifying spawn rates:", e);
+                            }
+                        }
+                        
+                        console.log("Successfully added objects to start screen");
+                        return true;
+                    } catch (e) {
+                        console.error("Error adding objects to start screen:", e);
+                        return false;
+                    }
+                } else {
+                    console.log("Game object not found yet");
+                    return false;
+                }
+            }
+            
+            // Try to add objects at various intervals after page load
+            window.addEventListener('load', function() {
+                console.log("Window loaded, scheduling object addition");
+                
+                // Try immediately
+                if (!checkGameAndAddObjects()) {
+                    // Try again after short delays
+                    setTimeout(checkGameAndAddObjects, 500);
+                    setTimeout(checkGameAndAddObjects, 1000);
+                    setTimeout(checkGameAndAddObjects, 2000);
+                    setTimeout(checkGameAndAddObjects, 3000);
+                    
+                    // Set up a longer interval to keep trying
+                    var attemptInterval = setInterval(function() {
+                        if (checkGameAndAddObjects()) {
+                            clearInterval(attemptInterval);
+                        }
+                    }, 1000);
+                    
+                    // Stop trying after 10 seconds
+                    setTimeout(function() {
+                        clearInterval(attemptInterval);
+                    }, 10000);
+                }
+            });
+        </script>
+    </body>
+</html>
